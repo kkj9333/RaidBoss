@@ -1,0 +1,15 @@
+#include <mc/ItemStack.hpp>
+#include <mc/MapItem.hpp>
+#include <mc/MapItemSavedData.hpp>
+THook(void, "?_updateTrackedPlayerDecorations@MapItemSavedData@@AEAAXAEAVBlockSource@@AEAVPlayer@@AEAVVec3@@AEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEAVColor@mce@@V?$AutomaticID@VDimension@@H@@AEAW4Type@MapDecoration@@@Z", MapItemSavedData* _this, BlockSource* a2,Player* a3, Vec3* a4, std::string* a5,mce::Color* a6,int a7, int* a8) {
+	//std::cout << "_updateTrackedPlayerDecorations:" << a3->getName() << a4->toString() << ",a5:" << *a5 << "type8:" << *a8 << std::endl;
+	if ((a3->getOffhandSlot().isNull()||a3->getOffhandSlot().getItem()->getSerializedName()!="minecraft:filled_map")&&(a3->getSelectedItem().isNull() || a3->getSelectedItem().getItem()->getSerializedName() != "minecraft:filled_map")) {
+		*a8 = 0x10;
+		return;
+	}
+	return original(_this, a2, a3, a4, a5, a6, a7, a8);
+}
+void PluginInit()
+{
+	logger.info("hide yourself when not use map");
+}
