@@ -5,13 +5,16 @@
 图片如下：<br>
 ![image](https://user-images.githubusercontent.com/51207072/212121139-286bc3a7-67cc-40a6-9b8c-960bcf8840ce.png)<br>
 ```javascript
-00:17:40 INFO [Server] raidboss:
-00:17:40 INFO [Server] a custom bossevent system
-00:17:40 INFO [Server] Usage:
-00:17:40 INFO [Server] - /raidboss create <event: string> <from: x y z> <to: x y z> <titlename: string> [percentage: float] [dimid: Dimension] [roundnum: int]
-00:17:40 INFO [Server] - /raidboss list
-00:17:40 INFO [Server] - /raidboss remove <event: string>
-00:17:40 INFO [Server] - /raidboss updatecolor <event: string> <color: bosseventcolor>
-00:17:40 INFO [Server] - /raidboss updatepercentage <event: string> <percentage: float>
-00:17:40 INFO [Server] - /raidboss updatetitle <event: string> <titlename: string>
+20:18:01 INFO [Server] raidboss:
+20:18:01 INFO [Server] a custom bossevent system
+20:18:01 INFO [Server] Usage:
+20:18:01 INFO [Server] - /raidboss bind <event: string> <entity: target> <tracesound: Boolean>
+20:18:01 INFO [Server] - /raidboss create <event: string> <from: x y z> <to: x y z> <titlename: string> [percentage: float] [dimid: Dimension] [roundnum: int]
+20:18:01 INFO [Server] - /raidboss list
+20:18:01 INFO [Server] - /raidboss remove <event: string>
+20:18:01 INFO [Server] - /raidboss removebind <event: string>
+20:18:01 INFO [Server] - /raidboss updatecolor <event: string> <color: bosseventcolor>
+20:18:01 INFO [Server] - /raidboss updatepercentage <event: string> <percentage: float>
+20:18:01 INFO [Server] - /raidboss updateround <event: string> <roundnum: int>
+20:18:01 INFO [Server] - /raidboss updatetitle <event: string> <titlename: string>
 ```
