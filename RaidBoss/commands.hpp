@@ -8,7 +8,8 @@
 #include "CustomRaidmanager.hpp"
 #include <FormUI.h>
 #include <mc/Dimension.hpp>
-
+#include <mc/Actor.hpp>
+#include <mc/ActorClassTree.hpp>
 struct mdimid :public AutomaticID<class Dimension, int> {
 
 };
@@ -57,12 +58,19 @@ class RaidbossCommand : public Command
         updatetitle =3,
         updatepercentage = 4,
         updatecolor = 5,
+        updateround=6,
+        bind=7,
+        removebind=8,
     } operation;
     bool updatetitle;
     bool updatepercentage;
     bool updatecolor;
     bool updateroundnum;
+    bool selectorisset;
+    bool enablesoundtrace;
     BossEventColour col;
+    CommandSelector<Actor> selector;
+    char filler[8];
 public:
 
     void execute(CommandOrigin const& ori, CommandOutput& output) const override
@@ -70,7 +78,8 @@ public:
         ServerPlayer* sp = ori.getPlayer();
         int dimid = dim;
         AABB area; BlockPos p1, p2; 
-
+        std::vector<ActorUniqueID> result; 
+        CommandSelectorResults<Actor> acresult;
         BlockPos center;
         if (!isOpset) {
         }
@@ -88,6 +97,8 @@ public:
                 if(!REvent::manager().createNewRaidBoss(raidname, center, dimid, area, percentage, title, round))
                     output.error("already exist");
                 break;
+#undef max(x,y)
+#undef min(x,y) 
             case baseOperation::remove:
                 if(!REvent::manager().removeRaidBoss(raidname))
                     output.error("not found");
@@ -115,13 +126,39 @@ public:
                         output.error("failed to update percentage");
                 }
                 break;
+            case baseOperation::updateround:
+                if (updateroundnum) {
+                    if (!REvent::manager().updateround(raidname, round))
+                        output.error("failed to update roundnow");
+                }
+                break;
+            case baseOperation::bind:
+                acresult = selector.results(ori);
+                if (acresult.empty()) {
+                    output.error("mismatch");
+                }
+                else {
+                    for (auto& ac : acresult) {
+                        if(ActorClassTree::isMobLegacy(ac->getEntityTypeId()))
+                            result.push_back(ac->getUniqueID());
+                    }
+                    if (result.empty()) {
+                        output.error("mismatch: no legacy mob");
+                    }
+                    else if (!REvent::manager().bindentities(raidname, result, enablesoundtrace))
+                        output.error("failed to bindentities");
+                }
+                break;
+            case baseOperation::removebind:
+                if (!REvent::manager().removebindentities(raidname))
+                    output.error("failed to removebindentities");
+                break;
             default:
                 break;
             }
         }
         //
-#undef max(x,y)
-#undef min(x,y) 
+
     }
 
     static void setup(CommandRegistry* registry)
@@ -152,6 +189,18 @@ public:
             {"updatepercentage", baseOperation::updatepercentage},
             }
         );
+        registry->addEnum<baseOperation>("updateround", {
+            {"updateround", baseOperation::updateround},
+            }
+        );
+        registry->addEnum<baseOperation>("bind", {
+            {"bind", baseOperation::bind},
+            }
+        );
+        registry->addEnum<baseOperation>("removebind", {
+            {"removebind", baseOperation::removebind},
+            }
+        );
         registry->addEnum<BossEventColour>("bosseventcolor", {
             {"grey", BossEventColour::Grey},
             {"blue", BossEventColour::Blue},
@@ -162,16 +211,40 @@ public:
             {"yellow", BossEventColour::Yellow},
             }
         );
-        auto eventnamepa = makeMandatory(&RaidbossCommand::raidname, "event");
+        registry->addSoftEnum(REvent::REventManager::eventsofttagname,
+            {}
+        );
+        REvent::REventManager::registry = registry;
+        auto eventnamepa = makeMandatory< CommandParameterDataType::SOFT_ENUM>(&RaidbossCommand::raidname, "event", REvent::REventManager::eventsofttagname.c_str());
         auto healthperpa = makeMandatory(&RaidbossCommand::percentage, "percentage", &RaidbossCommand::updatepercentage);
         auto roundpa = makeMandatory(&RaidbossCommand::round, "roundnum", &RaidbossCommand::updateroundnum);
         auto titlepa = makeMandatory(&RaidbossCommand::title, "titlename", &RaidbossCommand::updatetitle);
+        auto entitypa= makeMandatory(&RaidbossCommand::selector, "entity",&RaidbossCommand::selectorisset);
+        auto soundtracepa = makeMandatory(&RaidbossCommand::enablesoundtrace, "tracesound");
         auto colorpa = makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::col, "color","bosseventcolor", &RaidbossCommand::updatecolor);
+        registry->registerOverload<RaidbossCommand>(
+            "raidboss",
+            makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "rb", "removebind", &RaidbossCommand::isOpset),
+            eventnamepa
+            );
+        registry->registerOverload<RaidbossCommand>(
+            "raidboss",
+            makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "b", "bind", &RaidbossCommand::isOpset),
+            eventnamepa,
+            entitypa,
+            soundtracepa
+            );
         registry->registerOverload<RaidbossCommand>(
             "raidboss",
             makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "t", "updatetitle", &RaidbossCommand::isOpset),
             eventnamepa,
             titlepa
+            );
+        registry->registerOverload<RaidbossCommand>(
+            "raidboss",
+            makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "r", "updateround", &RaidbossCommand::isOpset),
+            eventnamepa,
+            roundpa
             );
         registry->registerOverload<RaidbossCommand>(
             "raidboss",
@@ -192,7 +265,8 @@ public:
         registry->registerOverload<RaidbossCommand>(
             "raidboss",
             makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "remove", "edoption1", &RaidbossCommand::isOpset),
-            eventnamepa);
+            eventnamepa
+            );
         registry->registerOverload<RaidbossCommand>(
             "raidboss",
             makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "create", "edoption2", &RaidbossCommand::isOpset),

@@ -24,7 +24,7 @@ namespace REvent {
 	}
 	std::string CustomRaidUnit::getshowtitle() const
 	{
-		return   this->title+" ("+std::to_string(this->round) + "/" + std::to_string(this->roundmax)+")";
+		return   this->title+ (shouwroundinfo?(" ("+std::to_string(this->round) + "/" + std::to_string(this->roundmax)+")"):"");
 	}
 	bool CustomRaidUnit::setoncereloadtime(float settime)
 	{
@@ -34,6 +34,7 @@ namespace REvent {
 	bool CustomRaidUnit::setroundnow(int round)
 	{
 		this->round= round < 1 ? 1 : (round > roundmax ? roundmax : round);
+		changedtype = (changetype)((int)changedtype | (int)changetype::changetitle);
 		return true;
 	}
 	bool CustomRaidUnit::settitle(std::string const& newt)
@@ -77,7 +78,9 @@ namespace REvent {
 	}
 	void CustomRaidUnit::anounceupdate()
 	{
+#ifdef debugcout
 		std::cout << __FUNCTION__ << std::endl;
+#endif
 		if (changedtype == changetype::none|| this->RegistereddPlayerlist.empty())
 			return;
 		int changeid = (int)changedtype; std::vector<ActorUniqueID> updatalist = std::vector<ActorUniqueID>(this->RegistereddPlayerlist.begin(), this->RegistereddPlayerlist.end()); int overlay = this->overlay;
@@ -130,7 +133,9 @@ namespace REvent {
 	}
 	void CustomRaidUnit::broadcastremove(std::vector<ActorUniqueID> vec)
 	{
+#ifdef debugcout
 		std::cout << __FUNCTION__ << std::endl;
+#endif
 		if (vec.empty()) {
 			vec = std::vector<ActorUniqueID>(this->RegistereddPlayerlist.begin(),this->RegistereddPlayerlist.end());
 		}
@@ -160,7 +165,9 @@ namespace REvent {
 	}
 	void CustomRaidUnit::broadcaststartshow(std::vector<ActorUniqueID> const& vec)
 	{
+#ifdef debugcout
 		std::cout << __FUNCTION__ << std::endl;
+#endif
 		if (vec.empty()) {
 			return;
 		}
@@ -218,7 +225,9 @@ namespace REvent {
 
 	CustomRaidUnit::~CustomRaidUnit()
 	{
+#ifdef debugcout
 		std::cout << __FUNCTION__ << std::endl;
+#endif
 		this->round = this->roundmax;
 		this->healthPercentage = 0;
 		broadcastremove();
@@ -267,6 +276,13 @@ namespace REvent {
 		this->title = "eorr";
 		this->centerpos = { 0,0,0 };
 	}
+	std::vector<ActorUniqueID> CustomRaidUnit::getRegisteredPlayerList()
+	{
+		std::vector<ActorUniqueID> ret;
+		for (auto& it : this->RegistereddPlayerlist)
+			ret.push_back({ it.id });
+		return ret;
+	}
 	std::string CustomRaidUnit::Tojsonstr()const {
 		return this->Tojson().dump(4, 32, false, nlohmann::detail::error_handler_t::ignore);
 	}
@@ -301,7 +317,9 @@ namespace REvent {
 	void CustomRaidUnit::validREplayerList()
 	{
 		while (!recordinfolist.empty()) {
+#ifdef debugcout
 			std::cout << "recordinfolist is not empty" << std::endl;
+#endif
 			recordinfo reinfo = recordinfolist.front(); recordinfolist.pop();
 			switch (reinfo.ac)
 			{
@@ -316,7 +334,9 @@ namespace REvent {
 				break;
 			}
 		}
-		std::cout << "validREplayerList" << std::endl;
+#ifdef debugcout
+		std::cout<<"validREplayerList" << std::endl;
+#endif
 		auto first = this->RegistereddPlayerlist.begin();
 		auto end = this->RegistereddPlayerlist.end();
 		while(first!=end) {
@@ -332,10 +352,14 @@ namespace REvent {
 	{
 		this->recordinfolist.push({ p->getActorUniqueId(),BossEvent::UnregisterPlayer });
 	}
-
+	void CustomRaidUnit::recordinfos(ActorUniqueID pid, BossEvent type) {
+		this->recordinfolist.push({ pid,type });
+	}
 	CustomRaidUnit::CustomRaidUnit(long long bossid, int roundmax, BlockPos const& centerpos, int dim, AABB const& ab, float percentage, std::string const& title)
 	{
+#ifdef debugcout
 		std::cout << __FUNCTION__ << std::endl;
+#endif
 		this->attachedbossUniqueID = bossid;
 		this->roundmax = roundmax;
 		this->centerpos = centerpos;
@@ -349,7 +373,9 @@ namespace REvent {
 	void CustomRaidUnit::tick()
 	{
 		try {
+#ifdef debugcout
 			std::cout << __FUNCTION__<<this->RegistereddPlayerlist.size() << std::endl;
+#endif
 			std::lock_guard<std::mutex> lk(mtickMutex);//lock the RaidEvent
 			//check first
 			checkshouldend();
@@ -399,6 +425,7 @@ namespace REvent {
 	{
 		return (BEextradata*)((__int64)a1 + 56);
 	}
+
 
 }
 

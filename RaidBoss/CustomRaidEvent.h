@@ -61,6 +61,7 @@ namespace REvent {
         int round = 0;
         int roundmax;
         bool isreloadround=false;
+        bool shouwroundinfo = true;
         float oncereloadtime=200;
         std::set < mUniqueID > RegistereddPlayerlist;
         struct recordinfo {
@@ -68,6 +69,7 @@ namespace REvent {
             BossEvent ac;
         };
         std::queue<recordinfo> recordinfolist;
+
     public:
         long long const getBossUniqueID()const;
         std::string getshowtitle()const;
@@ -87,6 +89,9 @@ namespace REvent {
         inline BossEventColour const& getcolor() const { return color; }
         bool setdarkenSky(int did=1);
         inline int const getdarkenSky() const { return darkenSky; }
+        //not use when CustomRaidUnit::tick!
+        std::vector<ActorUniqueID> getRegisteredPlayerList();
+    private:
         //use to reload
         bool reloadround();
         //use in tick only
@@ -99,12 +104,15 @@ namespace REvent {
         void validREplayerList();
         //check end and reload or ..
         bool checkshouldend();
+    public:
         //use thread to tick please
         void tick();
         //handlepacket
         void recordhandle(BossEventPacket* pt);
         //onplayerleft
         void onLeft(Player* p);
+        //cache recordinfo
+        void recordinfos(ActorUniqueID pid,BossEvent type);
         CustomRaidUnit(long long bossid, int roundmax, BlockPos const& centerpos, int dim, AABB const& ab, float percentage,std::string const& title);
         CustomRaidUnit(CustomRaidUnit const& as);
         CustomRaidUnit();
