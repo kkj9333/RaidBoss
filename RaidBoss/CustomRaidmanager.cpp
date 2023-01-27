@@ -2,8 +2,10 @@
 #include "CustomRaidmanager.hpp"
 #include <mc/Level.hpp>
 #include <mc/CommandRegistry.hpp>
-#include <mc/Player.hpp>
 #include <ScheduleAPI.h>
+#include <mc/Dimension.hpp>
+#include <mc/PlaySoundPacket.hpp>
+#include <mc/Spawner.hpp>
 namespace REvent {
 	bool REventManager::trylockwrite()
 	{
@@ -16,7 +18,7 @@ namespace REvent {
 		this->writemutex.unlock();
 		return;
 	}
-	bool REventManager::playsoundsforplayers(mUniqueID bossid, std::string const& soundname)
+	bool REventManager::playsoundsforplayers(mUniqueID bossid, std::string const& soundname, Vec3 const& v)
 	{
 		if (hasRaidBossinreal(bossid)) {
 			auto list = mlist[bossid].getRegisteredPlayerList();
@@ -24,7 +26,10 @@ namespace REvent {
 				auto PL = (Player*)Global<Level>->fetchEntity(acid, 0);
 				if (PL)
 				{
-					PL->sendPlaySoundPacket(soundname, PL->getPos(), 1, 1);
+					if(v==Vec3::ZERO)
+						PL->sendPlaySoundPacket(soundname, PL->getPos(), 1, 1);
+					else
+						PL->sendPlaySoundPacket(soundname, v, 1, 1);
 				}
 			}
 			return true;
@@ -32,6 +37,107 @@ namespace REvent {
 		}
 		return false;
 	}
+	bool REventManager::broadcastsoundsatvec(mUniqueID bossid, std::string const& soundname, std::vector<Vec3> const& locations)
+	{
+		if (hasRaidBossinreal(bossid)) {
+			auto list = mlist[bossid].getRegisteredPlayerList();
+			for (auto& acid : list) {
+				auto PL = (Player*)Global<Level>->fetchEntity(acid, 0);
+				if (PL)
+				{
+					float distance = 99999999;const Vec3* best = NULL; auto pos = PL->getPos();
+					for (auto& ivc : locations) {
+						if (ivc.distanceTo(pos) < distance) {
+							distance = ivc.distanceTo(pos);
+							best = &ivc;
+						}
+					}
+					if (best)
+					{
+						//std::cout << "distance:" << distance<< std::endl;
+						if (distance < 3)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 2.0, 1);
+						else if (distance < 5)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 1.5, 1);
+						else if (distance < 16)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 1.0, 1);
+						else if (distance < 25)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 0.8, 1);
+						else if (distance < 36)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 0.6, 1);
+						else if (distance < 49)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 0.3, 1);
+						else if (distance < 64)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 0.15, 1);
+						else if (distance < 81)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 0.05, 1);
+						else if (distance < 256)
+							PL->sendPlaySoundPacket(soundname, PL->getPos(), 0.01, 1);
+					}
+				}
+			}
+			return true;
+
+		}
+		return false;
+	}
+	bool REventManager::try_createandbindfromfile(mUniqueID bossid, std::string const& filename, bool enablesoundtrace, Vec3 const& spawnpos, int round)
+	{
+
+		if (hasRaidBossinreal(bossid)) {
+
+			if (this->mTraceEntityManager.hastraceunit(bossid)) {
+				this->mTraceEntityManager.removetraceunit(bossid);
+			}
+			int dimid = this->mlist[bossid].getdimid();
+			BlockPos centerpos = this->mlist[bossid].getcenterpos();
+			bool issplit = true; bool aboutkilledentity = false;
+			//gen in mainthread
+			auto uidset = Global<Level>->getSpawner().spawnMobGroup(*Global<Level>->getBlockSource(dimid), filename, spawnpos, issplit, aboutkilledentity, [filename, centerpos](Mob& s) {
+				s.setNameTag(filename);//HardcodedSpawningArea
+				//mydefined::setmoveto(&s, centerpos.toVec3(), 1);
+				mydefined::sethometo(&s, centerpos.toVec3(), 1);
+				return;
+				});
+			if (round == -1)
+				round = this->mlist[bossid].getroundnow();
+			this->mTraceEntityManager.addnewtraceunit(bossid, round,std::vector<ActorUniqueID>(uidset.begin(), uidset.end()), enablesoundtrace);
+			if (this->mTraceEntityManager.hastraceunit(bossid)) {
+				auto ptr = this->mTraceEntityManager.gettrackunitptr(bossid);
+				ptr->enabletraceevent = true;
+				ptr->traceevent = [this, bossid](Mob* s) {//use center outside it will be not changable
+					BlockPos centerpos;
+					if (this->hasRaidBossinreal(bossid))
+					{
+						centerpos = this->mlist[bossid].getcenterpos();
+						mydefined::sethometo(s, centerpos.toVec3(), 1);
+					}
+					//std::cout << "willsetedcenterpos:" << centerpos.toString() << std::endl;
+					//mydefined::setmoveto(s, centerpos.toVec3(), 1);
+				};
+			}
+			return true;
+		}
+		return false;
+	}
+	bool REventManager::try_tracedmobexecute(mUniqueID bossid, std::function<void(Mob*)> const& func)
+	{
+		if (hasRaidBossinreal(bossid)&& this->mTraceEntityManager.hastraceunit(bossid)) {
+			auto ptr=this->mTraceEntityManager.gettrackunitptr(bossid);
+			for (auto& enti : ptr->mytracedentity) {
+				if (enti.nowhealth <= 0)
+					continue;
+				//query only
+				auto ac = Global<Level>->fetchEntity(enti.id, 0);
+				if (!ac)
+					continue;
+				func((Mob*)ac);
+			}
+			return true;
+		}
+		return false;
+	}
+
 	void REventManager::tick()
 	{
 		//write
@@ -79,12 +185,16 @@ namespace REvent {
 						mlist[ks.bid].setroundnow(ks.round);
 						break;
 					case cacheinfo::cachetype::bindentities:
-						if (this->mTraceEntityManager.hastraceunit(ks.bid)) {
-							this->mTraceEntityManager.removetraceunit(ks.bid);
+						if (hasRaidBossinreal(ks.bid)) {
+							if (this->mTraceEntityManager.hastraceunit(ks.bid)) {
+								this->mTraceEntityManager.removetraceunit(ks.bid);
+							}
+							if (ks.round == -1)
+								ks.round = this->mlist[ks.bid].getroundnow();
+							this->mTraceEntityManager.addnewtraceunit(ks.bid, ks.round, ks.entites, ks.enablesoundtrace);
 						}
-						this->mTraceEntityManager.addnewtraceunit(ks.bid, ks.round, ks.entites, ks.enablesoundtrace);
 						break;
-					case cacheinfo::cachetype::removebindentities:
+					case cacheinfo::cachetype::removebindentities://remove not check
 							this->mTraceEntityManager.removetraceunit(ks.bid);
 						break;
 					case cacheinfo::cachetype::updatebindentities:
@@ -96,15 +206,32 @@ namespace REvent {
 					case cacheinfo::cachetype::playsoundforplayers:
 						playsoundsforplayers(ks.bid, ks.soundname);
 						break;
+					case cacheinfo::cachetype::broadcastsoundatlocations:
+						broadcastsoundsatvec(ks.bid, ks.soundname, ks.locations);
+						break;
+					case cacheinfo::cachetype::createbindfromfile:
+						try_createandbindfromfile(std::get<mUniqueID>(ks.params["bid"]), std::get<std::string>(ks.params["filename"]), std::get<bool>(ks.params["enablesoundtrace"]), std::get<Vec3>(ks.params["spawnpos"]), std::get<int>(ks.params["round"]));
+						break;
+					case cacheinfo::cachetype::foreachtracedmob:
+						try_tracedmobexecute(std::get<mUniqueID>(ks.params["bid"]), std::get<std::function<void(Mob*)>>(ks.params["foreachmob"]));
+						break;
+					case cacheinfo::cachetype::updatecenterpos:
+						if (hasRaidBossinreal(std::get<mUniqueID>(ks.params["bid"])))
+							this->mlist[std::get<mUniqueID>(ks.params["bid"])].setcenterpos(std::get<BlockPos>(ks.params["centerpos"]));
+						break;
 					default:
 						break;
 					}
 					this->cachelist.pop();
 				}
 			}
-			catch (std::runtime_error const& e) {
+
+			catch (const std::bad_variant_access& e) { // in case a wrong type/index is used
 				logger.error("error at REventManager::tick write for{},try to release lock...", e.what());
-				
+			}
+			catch (std::runtime_error const& e) {
+				logger.error("error at REventManager::tick write for{},try to remove top task and release lock...", e.what());
+				this->cachelist.pop();
 			}
 			catch (...) {
 				logger.error("unkown error at REventManager::tick write,try to release lock...");
@@ -147,12 +274,32 @@ namespace REvent {
 									this->updatepercentage(bossid, traceunit->getshowpercentage());
 									traceunit->ischanged = false;
 								}
+								if (traceunit->ticks<=0) {
+									//delay to play tracesound
+									if (traceunit->enablehelpsoundtrack) {
+										std::vector<Vec3> loc;
+										for (auto& kt : traceunit->mytracedentity) {
+											if (kt.nowhealth <= 0)
+												continue;
+											//query only
+											auto ac = Global<Level>->fetchEntity(kt.id, 0);
+											if (!ac)
+												continue;
+											loc.push_back(ac->getPos());
+										}
+										this->addplaysoundatlocations(bossid, traceunit->helptracesound, loc);
+									}
+									if (traceunit->enabletraceevent) {
+										this->addtracedmobexecute(bossid, traceunit->traceevent);
+									}
+									traceunit->ticks = 300;
+								}
 								//delay to play endsound
-								if (traceunit->getshowpercentage()<=0|| traceunit->nowhealth<=0) {
+								if (ii.second.gethealthPercentage()==0) {
 									this->addplaysoundsforplayers(bossid, traceunit->endtracesound);
 								}
 							}
-
+							traceunit->ticks-=1;
 						}
 						//tick
 						ii.second.tick();
@@ -286,6 +433,19 @@ namespace REvent {
 		this->cachelist.emplace(info);
 		return true;
 	}
+	bool REventManager::updatecenterpos(std::string const& name, BlockPos const& centerpos)
+	{
+		if (nametouid.find(name) == nametouid.end())
+			return false;
+		mUniqueID bid = nametouid[name];
+		//record
+		cacheinfo info(cacheinfo::cachetype::updatecenterpos);
+		info.params["centerpos"] = centerpos;
+		info.params["bid"] = bid;
+		this->cachelist.emplace(info);
+
+		return true;
+	}
 	bool REventManager::updatecolor(std::string const& name, BossEventColour color)
 	{
 		if (nametouid.find(name) == nametouid.end())
@@ -325,12 +485,17 @@ namespace REvent {
 			if (traceunit) {
 				ret += "\nbindround:" + std::to_string(traceunit->bindround) + ",shouldowper:" + std::to_string(traceunit->getshowpercentage())+",entites:\n[";
 				for (auto& acid : traceunit->mytracedentity) {
-					auto ac = Global<Level>->fetchEntity(acid.id, 0);
-					if (ac) {
-						ret += ac->getNameTag() + "(" + ac->getTypeName() + ")";
+					if (acid.nowhealth == 0) {
+						ret += "[DEAD]";
 					}
-					else
-						ret += std::to_string(acid.id);
+					else {
+						auto ac = Global<Level>->fetchEntity(acid.id, 0);
+						if (ac) {
+							ret += ac->getNameTag() + "(" + ac->getTypeName() + ")";
+						}
+						else
+							ret += std::to_string(acid.id);
+					}
 					ret += ",";
 				}
 				ret += "]";
@@ -346,15 +511,31 @@ namespace REvent {
 		mUniqueID bid = nametouid[name];
 		if (!hasRaidBossinreal(bid))
 			return false;
-		//record
-		if(round==-1)
-			round = this->mlist[bid].getroundnow();
+
 		//record
 		cacheinfo info(cacheinfo::cachetype::bindentities);
 		info.bid = bid; info.nameorupdatestr = name;
 		info.round = round;
 		info.entites = vec;
 		info.enablesoundtrace = enablesoundtrace;
+		this->cachelist.emplace(info);
+		return true;
+	}
+
+	bool REventManager::addcreatebindfromfile(std::string const& name, std::string const& filename, bool enablesoundtrace, Vec3 const& spawnpos, int round)
+	{
+		if (nametouid.find(name) == nametouid.end())
+			return false;
+		mUniqueID bid = nametouid[name];
+		if (!hasRaidBossinreal(bid))
+			return false;
+		//record
+		cacheinfo info(cacheinfo::cachetype::createbindfromfile);
+		info.params["bid"] = bid;
+		info.params["filename"] = filename;
+		info.params["enablesoundtrace"] = enablesoundtrace;
+		info.params["spawnpos"] = spawnpos;
+		info.params["round"] = round;
 		this->cachelist.emplace(info);
 		return true;
 	}
@@ -417,6 +598,16 @@ namespace REvent {
 			this->cachelist.emplace(info);
 		}
 	}
+	void REventManager::onreloadcomponent(mUniqueID id)
+	{
+		auto bossid = this->mTraceEntityManager.getbossidfromactorid(id);
+		if (bossid != -1) {
+			//record
+			auto mob = (Mob*)Global<Level>->fetchEntity(id, 0);
+			if(mob)
+			this->mTraceEntityManager.gettrackunitptr(bossid)->traceevent(mob);
+		}
+	}
 	bool REventManager::addplaysoundsforplayers(mUniqueID bossid, std::string const& soundname){
 		if (uidtoname.find(bossid) == uidtoname.end())
 			return false;
@@ -427,240 +618,42 @@ namespace REvent {
 		this->cachelist.emplace(info);
 		return true;
 	}
+	bool REventManager::addplaysoundatlocations(mUniqueID bossid, std::string const& soundname, std::vector<Vec3> const& vecs) {
+		if (uidtoname.find(bossid) == uidtoname.end())
+			return false;
+		//record
+		cacheinfo info(cacheinfo::cachetype::broadcastsoundatlocations);
+		info.bid = bossid;
+		info.soundname = soundname;
+		info.locations = vecs;
+		this->cachelist.emplace(info);
+		return true;
+	}
+	bool REventManager::addtracedmobexecute(mUniqueID bid, std::function<void(Mob*)> const& func)
+	{
+		if (uidtoname.find(bid) == uidtoname.end())
+			return false;
+		if (this->mTraceEntityManager.hastraceunit(bid)) {
+			//record
+			cacheinfo info(cacheinfo::cachetype::foreachtracedmob);
+			info.params["bid"] = bid;
+			info.params["foreachmob"] = func;
+			this->cachelist.emplace(info);
+			return true;
+		}
+		return false;
+	}
+	bool REventManager::addtracedmobexecute(std::string const& name, std::function<void(Mob*)> const& func)
+	{
+		if (nametouid.find(name) == nametouid.end())
+			return false;
+		mUniqueID bid = nametouid[name];
+		return addtracedmobexecute(bid,func);
+	}
 	REventManager& manager()
 	{
 		static REventManager mymanager;
 		//init
 		return mymanager;
 	}
-	//for CRentitytracehelper
-	bool CRentitytracehelper::trackunit::addentity(mUniqueID id)
-	{
-		if (this->mytracedentity.find(id) != this->mytracedentity.end())
-			return false;
-		auto ac=Global<Level>->fetchEntity(id, 0);
-		if (!ac)
-			return false;
-		this->nowhealth+=ac->getHealth();
-		this->maxhealth += ac->getMaxHealth();
-		this->mytracedentity.emplace(id, ac->getHealth(),ac->getMaxHealth());
-		ischanged = true;
-		return true;
-	}
-
-	bool CRentitytracehelper::trackunit::removeentity(mUniqueID id)
-	{
-		if (this->mytracedentity.find(id) == this->mytracedentity.end())
-			return false;
-		auto ac = Global<Level>->fetchEntity(id, 0);
-		if (!ac)
-			return false;
-		this->nowhealth -= ac->getHealth();
-		this->maxhealth -= ac->getMaxHealth();
-		this->mytracedentity.erase(id);
-		ischanged = true;
-		return true;
-	}
-
-	bool CRentitytracehelper::trackunit::setentities(std::vector<ActorUniqueID> const& vec)
-	{
-		this->resetentitiesdata();
-		for (auto &sd : vec) {
-			auto ac = Global<Level>->fetchEntity(sd, 0);
-			if (!ac)
-				continue;
-			this->mytracedentity.emplace(sd, ac->getHealth(), ac->getMaxHealth());
-			this->nowhealth += ac->getHealth();
-			this->maxhealth += ac->getMaxHealth();
-		}
-		ischanged = true;
-		return true;
-	}
-
-	float CRentitytracehelper::trackunit::getshowpercentage()
-	{
-		return this->nowhealth/this->maxhealth;
-	}
-
-	void CRentitytracehelper::trackunit::resetentitiesdata()
-	{
-		this->nowhealth = this->maxhealth = 0;
-		this->mytracedentity.clear();
-	}
-
-	void CRentitytracehelper::trackunit::init(mUniqueID bossid,int bindround, std::vector<ActorUniqueID> const& vec, bool enabelhelpsoundtrack)
-	{
-		isinited = true;
-		this->mbinduid = bossid;
-		this->bindround = bindround;
-		this->enablehelpsoundtrack = enabelhelpsoundtrack;
-		this->setentities(vec);
-		ischanged = true;
-	}
-	CRentitytracehelper::trackunit* CRentitytracehelper::gettrackunitptr(mUniqueID bossid)
-	{
-		if (hastraceunit(bossid))
-			return &this->mbossidlist[bossid];
-		return NULL;
-	}
-	mUniqueID CRentitytracehelper::getbossidfromactorid(mUniqueID actoruid)
-	{
-		if (hasentity(actoruid))
-			return this->ActorUidtoBossUid[actoruid];
-		return -1;
-	}
-	bool CRentitytracehelper::hasentity(mUniqueID actoruid)
-	{
-		return (this->ActorUidtoBossUid.find(actoruid) != this->ActorUidtoBossUid.end());
-	}
-	bool CRentitytracehelper::hastraceunit(mUniqueID bossid)
-	{
-		//checkunit
-		return (this->mbossidlist.find(bossid) != this->mbossidlist.end());
-	}
-	bool CRentitytracehelper::addnewentity(mUniqueID bossid, mUniqueID actoruid)
-	{
-		//checkunit
-		if (this->mbossidlist.find(bossid) != this->mbossidlist.end())
-			return false;
-		//checkindex
-		if (this->ActorUidtoBossUid.find(actoruid) != this->ActorUidtoBossUid.end())
-			return false;
-		auto ac = Global<Level>->fetchEntity(actoruid, 0);
-		if (!ac)
-			return false;
-		auto& refunit = this->mbossidlist[bossid];
-		//it should not be here so wo dont check
-		refunit.nowhealth += ac->getHealth();
-		refunit.maxhealth += ac->getMaxHealth();
-		refunit.mytracedentity.emplace(actoruid, ac->getHealth(), ac->getMaxHealth());
-		this->ActorUidtoBossUid.emplace(actoruid, bossid);
-		return true;
-	}
-	bool CRentitytracehelper::removeoldentity(mUniqueID bossid, mUniqueID actoruid)
-	{
-		//checkunit
-		if (this->mbossidlist.find(bossid) == this->mbossidlist.end())
-			return false;
-		//checkindex
-		if (this->ActorUidtoBossUid.find(actoruid) == this->ActorUidtoBossUid.end())
-			return false;
-		auto ac = Global<Level>->fetchEntity(actoruid, 0);
-		if (!ac)
-			return false;
-		auto& refunit = this->mbossidlist[bossid];
-		//it should be here so wo dont check
-		refunit.nowhealth -= ac->getHealth();
-		refunit.maxhealth -= ac->getMaxHealth();
-		refunit.mytracedentity.erase(actoruid);
-		this->ActorUidtoBossUid.erase(actoruid);
-
-		return true;
-	}
-	bool CRentitytracehelper::updateentity(mUniqueID bossid, mUniqueID actoruid)
-	{
-		//checkunit
-		if (this->mbossidlist.find(bossid) == this->mbossidlist.end())
-			return false;
-		//checkindex
-		if (this->ActorUidtoBossUid.find(actoruid) == this->ActorUidtoBossUid.end())
-			return false;
-		auto ac = Global<Level>->fetchEntity(actoruid, 0);
-		if (!ac)
-			return false;
-		auto& refunit = this->mbossidlist[bossid];
-		auto& refactor = const_cast<mtentity&>(* refunit.mytracedentity.find(actoruid));
-		//it should be here so wo dont check
-		auto rawhl = refactor.nowhealth;
-		auto rawmaxhl = refactor.maxhealth;
-		//del raw
-		refunit.nowhealth -= rawhl;
-		refunit.maxhealth -= rawmaxhl;
-		//update
-		refactor.nowhealth = ac->getHealth();
-		refactor.maxhealth = ac->getMaxHealth();
-		//add
-		refunit.nowhealth += refactor.nowhealth;
-		refunit.maxhealth += refactor.maxhealth;
-		refunit.ischanged = true;
-		return true;
-	}
-	bool CRentitytracehelper::updateentitywithdeath(mUniqueID bossid, mUniqueID actoruid)
-	{
-		//checkunit
-		if (this->mbossidlist.find(bossid) == this->mbossidlist.end())
-			return false;
-		//checkindex
-		if (this->ActorUidtoBossUid.find(actoruid) == this->ActorUidtoBossUid.end())
-			return false;
-		auto& refunit = this->mbossidlist[bossid];
-		auto& refactor = const_cast<mtentity&>(*refunit.mytracedentity.find(actoruid));
-		//it should be here so wo dont check
-		//del raw
-		refunit.nowhealth -= refactor.nowhealth;
-		//update
-		refactor.nowhealth = 0;
-		refunit.ischanged = true;
-		return true;
-	}
-	bool CRentitytracehelper::setentities(mUniqueID bossid, std::vector<ActorUniqueID> const& vec)
-	{
-		//checkunit
-		if (this->mbossidlist.find(bossid) == this->mbossidlist.end())
-			return false;
-		auto& refunit = this->mbossidlist[bossid];
-		//clearindexs
-		for (auto& oldid : refunit.mytracedentity) {
-			this->ActorUidtoBossUid.erase(oldid.id);
-		}
-		//cleardata
-		refunit.resetentitiesdata();
-		//add start
-		for (mUniqueID it : vec) {
-			auto ac = Global<Level>->fetchEntity(it, 0);
-			if (!ac)
-				continue;
-			this->ActorUidtoBossUid.emplace(it, bossid);
-			refunit.mytracedentity.emplace(it, ac->getHealth(), ac->getMaxHealth());
-			refunit.nowhealth += ac->getHealth();
-			refunit.maxhealth += ac->getMaxHealth();
-		}
-		return true;
-	}
-	bool CRentitytracehelper::addnewtraceunit(mUniqueID bossid, int bindround, std::vector<ActorUniqueID> const& vec, bool enabelhelpsoundtrack)
-	{
-		//checkunit
-		if (this->mbossidlist.find(bossid) != this->mbossidlist.end())//makesureonly
-			return false;
-		//checkindex
-		for (auto& it : vec) {// makesure only
-			if (this->ActorUidtoBossUid.find(it) != this->ActorUidtoBossUid.end())
-				return false;
-		}
-		//add start
-		for (mUniqueID it : vec) {
-			this->ActorUidtoBossUid.emplace(it,bossid);
-		}
-		CRentitytracehelper::trackunit munit; 
-		munit.init(bossid, bindround, vec, enabelhelpsoundtrack);
-		this->mbossidlist.emplace(bossid, std::move(munit));
-		return true;
-	}
-
-	bool CRentitytracehelper::removetraceunit(mUniqueID bossid)
-	{
-		//checkunit
-		if (this->mbossidlist.find(bossid) == this->mbossidlist.end())
-			return false;
-		//clearindex
-		for (auto& it : this->mbossidlist[bossid].mytracedentity) {
-			this->ActorUidtoBossUid.erase(it.id);
-		}
-		this->mbossidlist.erase(bossid);
-		return true;
-	}
-
-
-
-
 }

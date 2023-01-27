@@ -14,5 +14,5 @@
 #include <Global.h>
 #include <LoggerAPI.h>
 extern Logger logger;
-//#define debugcout
+#define debugmode
 #endif //PCH_H

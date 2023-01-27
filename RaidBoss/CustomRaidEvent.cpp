@@ -26,6 +26,9 @@ namespace REvent {
 	{
 		return   this->title+ (shouwroundinfo?(" ("+std::to_string(this->round) + "/" + std::to_string(this->roundmax)+")"):"");
 	}
+	void CustomRaidUnit::setcenterpos(BlockPos const& bp) {
+		this->centerpos = bp;
+	}
 	bool CustomRaidUnit::setoncereloadtime(float settime)
 	{
 		oncereloadtime = settime;
@@ -190,7 +193,7 @@ namespace REvent {
 				auto pl = (Player*)Global<Level>->fetchEntity(tp, 0);
 				if (pl) {
 					{
-						pl->sendAddEntityPacket(bossid, "player", centerpos.toVec3(), Vec2{0, 0}, 0);
+						pl->sendAddEntityPacket(bossid, "player", centerpos.toVec3().add(0,200,0), Vec2{0, 0}, 0);
 						pl->sendNetworkPacket(*pt);
 					}
 				}
@@ -411,19 +414,6 @@ namespace REvent {
 			logger.error("error at{},{}", __FUNCTION__, e.what());
 		}
 
-	}
-
-
-
-
-	BEextradata* BEextradata::fromBossEventPacketptr(BossEventPacket* a1)
-	{
-		return (BEextradata*)((__int64)a1 + 56);
-	}
-
-	BEextradata* BEextradata::fromBossEventPacketptr(Packet* a1)
-	{
-		return (BEextradata*)((__int64)a1 + 56);
 	}
 
 

@@ -1,45 +1,8 @@
 #pragma once
 //#include <EventAPI.h>
-#include <Utils/FileHelper.h>
-#include <Nlohmann/json.hpp>
-#include <mc/BlockPos.hpp>
-#include <mc/AABB.hpp>
-#include <mc/BossEventPacket.hpp>
-namespace REvent {
-    struct BEextradata {
+#include "customstructure.hpp"
 
-        long long bossUniqueEntityId;
-        long long playerUniqueEntityId = 0;
-        BossEvent action;
-        string title;
-        float healthPercentage;
-        BossEventColour color;
-        int darkenSky;//5 dark(overlay=1 as wither) 1 normal 2unkown used in raid(but overlay=0)
-        int overlay;//1 1 means can change style //1 1 means can change style
-        static BEextradata* fromBossEventPacketptr(BossEventPacket* a1);
-        static BEextradata* fromBossEventPacketptr(Packet* a1);
-    };
-    //bool cmpUniqueID(ActorUniqueID a1, ActorUniqueID a2);
-    class mUniqueID :public ActorUniqueID {
-    public:
-        mUniqueID():ActorUniqueID(){}
-        mUniqueID(long long id):ActorUniqueID(id){}
-        mUniqueID(ActorUniqueID && id) :ActorUniqueID(id) {}
-        mUniqueID(ActorUniqueID const& id) :ActorUniqueID(id) {}
-        inline bool operator<(mUniqueID a2) const{
-            return this->id < a2.id;
-        }
-        inline bool operator==(mUniqueID a2) const{
-            return this->id == a2.id;
-        }
-    };
-    struct myHashFuc
-    {
-        std::size_t operator()(const mUniqueID& key) const
-        {
-            return std::hash<__int64>()(key.id);
-        }
-    };
+namespace REvent {
     class CustomRaidUnit {
         long long attachedbossUniqueID=-1;
         std::string title;
@@ -74,6 +37,7 @@ namespace REvent {
         long long const getBossUniqueID()const;
         std::string getshowtitle()const;
         inline BlockPos const& getcenterpos() const { return centerpos; };
+        void setcenterpos(BlockPos const& bp);
         inline AABB const& getAABB() const { return area; };
         inline bool isreloadinground() const { return isreloadround; };
         bool setoncereloadtime(float settime = 200);
@@ -89,6 +53,7 @@ namespace REvent {
         inline BossEventColour const& getcolor() const { return color; }
         bool setdarkenSky(int did=1);
         inline int const getdarkenSky() const { return darkenSky; }
+        inline int const getdimid() const { return dimid; }
         //not use when CustomRaidUnit::tick!
         std::vector<ActorUniqueID> getRegisteredPlayerList();
     private:

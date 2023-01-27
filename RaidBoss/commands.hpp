@@ -10,6 +10,7 @@
 #include <mc/Dimension.hpp>
 #include <mc/Actor.hpp>
 #include <mc/ActorClassTree.hpp>
+#include <mc/SpawnGroupRegistry.hpp>
 struct mdimid :public AutomaticID<class Dimension, int> {
 
 };
@@ -40,12 +41,14 @@ class RaidbossCommand : public Command
 {
 
     std::string raidname;
+    std::string raidgroupname;
     bool isOpset;
     bool isroundset;
     bool isdimset;
     bool ispercentageset;
     CommandPosition pos1;
     CommandPosition pos2;
+    CommandPosition pos3;
     std::string title="uninititle";
     mdimid dim;
     int round=10;
@@ -61,6 +64,8 @@ class RaidbossCommand : public Command
         updateround=6,
         bind=7,
         removebind=8,
+        createbindfromfile=9,
+        updatecenterpos=10,
     } operation;
     bool updatetitle;
     bool updatepercentage;
@@ -68,6 +73,7 @@ class RaidbossCommand : public Command
     bool updateroundnum;
     bool selectorisset;
     bool enablesoundtrace;
+    bool ispos3centerset;
     BossEventColour col;
     CommandSelector<Actor> selector;
     char filler[8];
@@ -91,20 +97,25 @@ public:
             case baseOperation::create:
                 p1= pos1.getBlockPos(0, ori, { 0, 0, 0 }), p2 = pos2.getBlockPos(0, ori, { 0, 0, 0 });
                 area = { {min(p1.x,p2.x),min(p1.y,p2.y),min(p1.z,p2.z)},{max(p1.x,p2.x),max(p1.y,p2.y),max(p1.z,p2.z)} };
-                center = area.getCenter().toBlockPos();
+                center = ispos3centerset?pos3.getBlockPos(0, ori, { 0, 0, 0 }) : area.getCenter().toBlockPos();
                 if (!isdimset)
                     dimid = ori.getDimension()->getDimensionId();
                 if(!REvent::manager().createNewRaidBoss(raidname, center, dimid, area, percentage, title, round))
                     output.error("already exist");
+                else
+                    output.success();
                 break;
 #undef max(x,y)
 #undef min(x,y) 
             case baseOperation::remove:
                 if(!REvent::manager().removeRaidBoss(raidname))
                     output.error("not found");
+                else
+                    output.success();
                 break;
             case baseOperation::list:
                 output.addMessage(REvent::manager().getlist());
+                output.success();
                 break;
             case baseOperation::updatecolor:
 
@@ -112,24 +123,32 @@ public:
                 {
                     if (!REvent::manager().updatecolor(raidname, col))
                         output.error("failed to update color");
+                    else
+                        output.success();
                 }
                 break;
             case baseOperation::updatetitle:
                 if (updatetitle) {
                     if (!REvent::manager().updatetitle(raidname, title))
                         output.error("failed to update title");
+                    else
+                        output.success();
                 }
                 break;
             case baseOperation::updatepercentage:
                 if (updatepercentage) {
                     if (!REvent::manager().updatepercentage(raidname, percentage))
                         output.error("failed to update percentage");
+                    else
+                        output.success();
                 }
                 break;
             case baseOperation::updateround:
                 if (updateroundnum) {
                     if (!REvent::manager().updateround(raidname, round))
                         output.error("failed to update roundnow");
+                    else
+                        output.success();
                 }
                 break;
             case baseOperation::bind:
@@ -147,11 +166,27 @@ public:
                     }
                     else if (!REvent::manager().bindentities(raidname, result, enablesoundtrace))
                         output.error("failed to bindentities");
+                    else
+                        output.success();
                 }
                 break;
             case baseOperation::removebind:
                 if (!REvent::manager().removebindentities(raidname))
                     output.error("failed to removebindentities");
+                else
+                    output.success();
+                break;
+            case baseOperation::createbindfromfile:
+                if (!REvent::manager().addcreatebindfromfile(raidname, raidgroupname, enablesoundtrace, pos1.getPosition(0, ori, { 0, 0, 0 })))
+                    output.error("failed to createbindfromfile");
+                else
+                    output.success();
+                break;
+            case baseOperation::updatecenterpos:
+                if (!REvent::manager().updatecenterpos(raidname, pos1.getBlockPos(0, ori, { 0, 0, 0 })))
+                    output.error("failed to updatecenterpos");
+                else
+                    output.success();
                 break;
             default:
                 break;
@@ -193,12 +228,20 @@ public:
             {"updateround", baseOperation::updateround},
             }
         );
+        registry->addEnum<baseOperation>("updatecenter", {
+            {"updatecenter", baseOperation::updatecenterpos},
+            }
+        );
         registry->addEnum<baseOperation>("bind", {
             {"bind", baseOperation::bind},
             }
         );
         registry->addEnum<baseOperation>("removebind", {
             {"removebind", baseOperation::removebind},
+            }
+        );
+        registry->addEnum<baseOperation>("createbindfromfile", {
+            {"createbind", baseOperation::createbindfromfile},
             }
         );
         registry->addEnum<BossEventColour>("bosseventcolor", {
@@ -214,9 +257,14 @@ public:
         registry->addSoftEnum(REvent::REventManager::eventsofttagname,
             {}
         );
+        registry->addSoftEnum(REvent::REventManager::raidgroupsofttagname,
+            {}
+        );
         REvent::REventManager::registry = registry;
+        auto raidmobgrouppa = makeMandatory< CommandParameterDataType::SOFT_ENUM>(&RaidbossCommand::raidgroupname, "file", REvent::REventManager::raidgroupsofttagname.c_str());
         auto eventnamepa = makeMandatory< CommandParameterDataType::SOFT_ENUM>(&RaidbossCommand::raidname, "event", REvent::REventManager::eventsofttagname.c_str());
         auto healthperpa = makeMandatory(&RaidbossCommand::percentage, "percentage", &RaidbossCommand::updatepercentage);
+        auto vec3pospa = makeMandatory(&RaidbossCommand::pos1, "pos");
         auto roundpa = makeMandatory(&RaidbossCommand::round, "roundnum", &RaidbossCommand::updateroundnum);
         auto titlepa = makeMandatory(&RaidbossCommand::title, "titlename", &RaidbossCommand::updatetitle);
         auto entitypa= makeMandatory(&RaidbossCommand::selector, "entity",&RaidbossCommand::selectorisset);
@@ -236,9 +284,23 @@ public:
             );
         registry->registerOverload<RaidbossCommand>(
             "raidboss",
+            makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "cb", "createbindfromfile", &RaidbossCommand::isOpset),
+            eventnamepa,
+            raidmobgrouppa,
+            vec3pospa,
+            soundtracepa
+            );
+        registry->registerOverload<RaidbossCommand>(
+            "raidboss",
             makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "t", "updatetitle", &RaidbossCommand::isOpset),
             eventnamepa,
             titlepa
+            );
+        registry->registerOverload<RaidbossCommand>(
+            "raidboss",
+            makeMandatory<CommandParameterDataType::ENUM>(&RaidbossCommand::operation, "cp", "updatecenter", &RaidbossCommand::isOpset),
+            eventnamepa,
+            vec3pospa
             );
         registry->registerOverload<RaidbossCommand>(
             "raidboss",
@@ -275,10 +337,10 @@ public:
             makeMandatory(&RaidbossCommand::pos2, "to"),
             makeMandatory(&RaidbossCommand::title, "titlename"),
             makeOptional(&RaidbossCommand::percentage, "percentage", &RaidbossCommand::ispercentageset),
+            makeOptional(&RaidbossCommand::pos3, "centerpos", &RaidbossCommand::ispos3centerset),
             makeOptional(&RaidbossCommand::dim, "dimid", &RaidbossCommand::isdimset),
             makeOptional(&RaidbossCommand::round, "roundnum",&RaidbossCommand::isroundset )
             );
-            //makeOptional(&VirtualBoxCommand::mayxuid, "playerxuid|playername", &IVshopCommand::isxuid_set)
     }
 };
 

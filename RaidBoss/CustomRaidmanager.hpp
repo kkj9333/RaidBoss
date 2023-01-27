@@ -1,70 +1,10 @@
 ﻿#pragma once
 #include "CustomRaidEvent.h"
+#include "CRentitytracehelper.h"
+#include <atomic>
 
 namespace REvent {
-	//use after started need Global<Level>
-	//all vec make sure uid is unique
-	class CRentitytracehelper {
-		struct mtentity {
-			//same
-			mUniqueID id = -1;
-			float nowhealth = 0;
-			float maxhealth = 0;
-			inline bool operator<(mtentity a2) const {
-				return this->id < a2.id;
-			}
-			inline bool operator==(mtentity a2) const {
-				return this->id == a2.id;
-			}
-			inline mtentity(mUniqueID sid, float snowhealth=0, float smaxhealth=0) {
-				id = sid;
-				nowhealth = snowhealth;
-				maxhealth = smaxhealth;
-			}
-			inline mtentity(mtentity const& ev) {
-				id = ev.id;
-				nowhealth = ev.nowhealth;
-				maxhealth = ev.maxhealth;
-			}
-		};
-		struct trackunit {
-			mUniqueID mbinduid = -1;
-			bool juststart = true;
-			bool isinited = false;
-			bool enablehelpsoundtrack = false;
-			int bindround = 0;
-			float nowhealth = 0;
-			float maxhealth = 0;
-			std::set<mtentity> mytracedentity;
-			std::string starttracesound = "block.bell.hit";
-			std::string helptracesound = "raid.horn";
-			std::string endtracesound = "mob.villager.yes";
-			bool ischanged;
-		private:
-			bool addentity(mUniqueID id);
-			bool removeentity(mUniqueID id);
-			bool setentities(std::vector<ActorUniqueID> const& vec);
-		public:
-			float getshowpercentage();
-			void resetentitiesdata();
-			void init(mUniqueID bossuid,int bindround, std::vector<ActorUniqueID> const& vec, bool enabelhelpsoundtrack = true);
-		};
-		std::unordered_map<mUniqueID, trackunit, myHashFuc> mbossidlist;//one CustomRaidUnit have one trackunit
-		std::unordered_map<mUniqueID, mUniqueID, myHashFuc> ActorUidtoBossUid;// one actor map one CustomRaidUnit only
-	public:
-		trackunit* gettrackunitptr(mUniqueID bossid);
-		mUniqueID getbossidfromactorid(mUniqueID actoruid);
-		bool hasentity(mUniqueID actoruid);
-		bool hastraceunit(mUniqueID bossid);
-		bool addnewentity(mUniqueID bossid, mUniqueID actoruid);
-		bool removeoldentity(mUniqueID bossid, mUniqueID actoruid);
-		bool updateentity(mUniqueID bossid, mUniqueID actoruid);
-		bool updateentitywithdeath(mUniqueID bossid, mUniqueID actoruid);
-		bool setentities(mUniqueID bossid,std::vector<ActorUniqueID> const& vec);
-		bool addnewtraceunit(mUniqueID bossid, int bindround, std::vector<ActorUniqueID> const& vec, bool enabelhelpsoundtrack = true);
-		bool removetraceunit(mUniqueID bossid);
 
-	};
 	class REventManager {
 		std::unordered_map<mUniqueID, CustomRaidUnit, myHashFuc> mlist;
 		std::unordered_map<mUniqueID, std::string, myHashFuc> uidtoname;
@@ -86,7 +26,14 @@ namespace REvent {
 				updatebindentities=12,
 				ondiebindentities=13,
 				playsoundforplayers=14,
+				broadcastsoundatlocations=15,
+				createbindfromfile=16,
+				foreachtracedmob=17,
+				updatecenterpos=18,
 			}type;
+			typedef std::variant < mUniqueID, std::string, AABB, BlockPos, Vec3, BossEventColour, int, float, std::vector<ActorUniqueID>, std::vector<Vec3>, bool, std::function<void(Mob*)> > element;
+			std::unordered_map<std::string,element> params;
+			//old not remove
 			mUniqueID bid=-1;
 			ActorUniqueID playeruid = -1;
 			std::string nameorupdatestr="errorname";
@@ -99,6 +46,7 @@ namespace REvent {
 			int roundmax=10;
 			int round = 1;
 			std::vector<ActorUniqueID> entites;
+			std::vector<Vec3> locations;
 			std::string soundname;
 			bool enablesoundtrace=false;
 			inline cacheinfo(cachetype c) {
@@ -110,10 +58,14 @@ namespace REvent {
 		int checkdeadlocktime = 0;
 		bool trylockwrite();
 		void unlockwrite();
-		bool playsoundsforplayers(mUniqueID bossid, std::string const& soundname);
+		bool playsoundsforplayers(mUniqueID bossid, std::string const& soundname, Vec3 const& v = Vec3::ZERO);
+		bool broadcastsoundsatvec(mUniqueID bossid, std::string const& soundname, std::vector<Vec3> const& locations);
+		bool try_createandbindfromfile(mUniqueID bossid, std::string const& filename, bool enablesoundtrace, Vec3 const& spawnpos, int round = -1);
+		bool try_tracedmobexecute(mUniqueID bossid, std::function<void(Mob*)> const& func);
 	public:
 		CRentitytracehelper mTraceEntityManager;
 		inline static std::string eventsofttagname = "REeventsoft";
+		inline static std::string raidgroupsofttagname = "REeventraidgroupsoft";
 		inline static CommandRegistry* registry = NULL;
 		//main entry create thread for Unit to tick
 		void tick();
@@ -129,16 +81,25 @@ namespace REvent {
 		bool updatetitle(std::string const& name, std::string const& title);
 		bool updatepercentage(std::string const& name, float percentage);
 		bool updatepercentage(mUniqueID bid, float percentage);
+		bool updatecenterpos(std::string const& name, BlockPos const& centerpos);
 		bool updatecolor(std::string const& name, BossEventColour color);
 		bool updateround(std::string const& name, int round);
 		std::string getlist();
 		bool bindentities(std::string const& name, std::vector<ActorUniqueID> const& vec, bool enablesoundtrace,int round=-1);
+		bool addcreatebindfromfile(std::string const& name, std::string const& filename, bool enablesoundtrace, Vec3 const& v, int round = -1);
 		bool removebindentities(std::string const& name);
 		bool removebindentities(mUniqueID bossid);
 		void onmobhurt(mUniqueID id);
 		void onmobdie(mUniqueID id);
 		void onactordeswpawn(mUniqueID id);
+		void onreloadcomponent(mUniqueID id);
 		bool addplaysoundsforplayers(mUniqueID bossid, std::string const& soundname);
+		bool addplaysoundatlocations(mUniqueID bossid, std::string const& soundname,std::vector<Vec3> const& vecs);
+		bool addtracedmobexecute(mUniqueID bossid, std::function<void(Mob*)> const& func);
+		bool addtracedmobexecute(std::string const& name, std::function<void(Mob*)> const& func);
 	};
 	REventManager& manager();
+	struct cSpawner {
+		
+	};
 }
